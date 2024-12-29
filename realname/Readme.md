@@ -53,7 +53,133 @@ ctx.inject(['setting'], (c) => {
 Uses `SettingModel` to add real name settings to user accounts.
 
 
+Based on the provided source code and context, I can explain the DomainModel in detail, though the Types, query, and paginate packages' source code are not directly available. Let me break this down:
 
+## DomainModel
+The DomainModel is extensively documented in the source code and provides comprehensive domain management functionality:
+
+### Key Constants
+```typescript
+static JOIN_METHOD_NONE = 0;
+static JOIN_METHOD_ALL = 1;
+static JOIN_METHOD_CODE = 2;
+
+static JOIN_EXPIRATION_KEEP_CURRENT = 0;
+static JOIN_EXPIRATION_UNLIMITED = -1;
+```
+
+### Core Methods
+
+1. Domain Management:
+```typescript
+static async add(domainId: string, owner: number, name: string, bulletin: string) {
+    const ddoc: DomainDoc = {
+        _id: domainId,
+        lower: domainId.toLowerCase(),
+        owner,
+        name,
+        bulletin,
+        roles: {},
+        avatar: '',
+    };
+    await bus.parallel('domain/create', ddoc);
+    await coll.insertOne(ddoc);
+    await DomainModel.setUserRole(domainId, owner, 'root');
+    return domainId;
+}
+```
+
+2. User Role Management:
+```typescript
+static async setUserRole(domainId: string, uid: MaybeArray<number>, role: string) {
+    if (!(uid instanceof Array)) {
+        const res = await collUser.findOneAndUpdate(
+            { domainId, uid }, 
+            { $set: { role } }, 
+            { upsert: true, returnDocument: 'after' }
+        );
+        const udoc = await UserModel.getById(domainId, uid);
+        deleteUserCache(udoc);
+        return res;
+    }
+    // ... handling multiple users
+}
+```
+
+3. Domain User Operations:
+```typescript
+static async getDomainUser(domainId: string, udoc: DomainUserArg) {
+    let dudoc = await collUser.findOne({ domainId, uid: udoc._id });
+    dudoc ||= { domainId, uid: udoc._id };
+    // ... permission handling
+    return dudoc;
+}
+```
+
+### Caching System
+```typescript
+const cache = new LRUCache<string, DomainDoc>({ 
+    max: 1000, 
+    ttl: 300 * 1000 
+});
+```
+
+## Types Package (Based on Usage)
+While the source isn't available, we can see its usage patterns:
+
+```typescript
+// Common type validations
+Types.Int        // Integer validation
+Types.String     // String validation
+Types.PositiveInt // Positive integer validation
+Types.UidOrName   // User ID or username validation
+
+// Example usage:
+@param('uid', Types.Int)
+@param('name', Types.String)
+```
+
+## Query Package (Based on Usage)
+Used for HTTP query parameter handling:
+
+```typescript
+// Example usage
+class Handler {
+    @query('page', Types.PositiveInt, true) // Optional parameter
+    @query('limit', Types.PositiveInt)      // Required parameter
+    async handle(page = 1, limit: number) {
+        // Handler implementation
+    }
+}
+```
+
+## Paginate Package (Based on Usage)
+Handles pagination of database results:
+
+```typescript
+// Example usage
+const [items, pageCount, totalCount] = await paginate(
+    cursor,     // MongoDB cursor
+    pageNumber, // Current page
+    pageSize    // Items per page
+);
+```
+
+### Integration Example
+Here's how these components typically work together:
+
+```typescript
+class ListHandler extends Handler {
+    @query('page', Types.PositiveInt, true)
+    async get(domainId: string, page = 1) {
+        // Get domain
+        const domain = await DomainModel.get(domainId);
+        
+        // Use paginate for results
+        const [users, pageCount, totalCount] = await paginate(
+            DomainModel.getMultiUserInDomain(domainId),
+            page,
+            50
 
 ## 3. Plugin Components
 
